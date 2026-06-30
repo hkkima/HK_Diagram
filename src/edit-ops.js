@@ -71,6 +71,18 @@ export function renameNode(ir, oldId, newId) {
   return true;
 }
 
+// Editable edge array per type (class/flowchart/state: ir.edges; er: ir.rels).
+export function edgeList(ir) {
+  if (ir.type === 'erDiagram') return ir.rels;
+  if (ir.type === 'sequenceDiagram') return null; // sequence edges are events; not edited here
+  return ir.edges;
+}
+
+export function deleteEdge(ir, index) {
+  const list = edgeList(ir);
+  if (list && index >= 0 && index < list.length) list.splice(index, 1);
+}
+
 export function addEdge(ir, from, to) {
   if (from === to && ir.type !== 'sequenceDiagram' && ir.type !== 'stateDiagram') return;
   if (ir.type === 'classDiagram') ir.edges.push({ parent: from, child: to, kind: 'inheritance', style: 'solid', label: null });

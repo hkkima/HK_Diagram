@@ -37,6 +37,10 @@
   .hk-node.drop > path:first-child, .hk-node.drop > rect:last-child {
     stroke:#2f9e44 !important; stroke-width:2.8 !important; }
   #hk-linkline { pointer-events:none; }
+  .hk-edge { cursor:pointer; }
+  .hk-edge .hit { stroke:transparent; }
+  .hk-edge:hover > path:not(.hit), .hk-edge:hover > line:not(.hit) { stroke:#7aa7d6; }
+  .hk-edge.sel > path:not(.hit), .hk-edge.sel > line:not(.hit) { stroke:var(--sel) !important; stroke-width:2.6 !important; }
   .panel { border-left:1px solid var(--bd); background:#fff; padding:12px; overflow:auto; font-size:13px; }
   .panel h2 { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:#57606a; margin:0 0 8px; }
   .panel label { display:block; font-size:12px; color:#57606a; margin:10px 0 3px; }

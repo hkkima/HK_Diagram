@@ -2,12 +2,13 @@
 import { renderToSVG, detectType } from '../src/render.js';
 import { parseAny } from '../src/ir.js';
 import { serialize } from '../src/serialize.js';
-import { findElement, addNode, deleteNode, renameNode, addEdge, reorderByPeers } from '../src/edit-ops.js';
+import { findElement, addNode, deleteNode, renameNode, addEdge, reorderByPeers, edgeList, deleteEdge } from '../src/edit-ops.js';
 
 const $ = (id) => document.getElementById(id);
 const code = $('code'), stage = $('stage'), panel = $('panel'), kind = $('kind'), example = $('example');
 
-let ir = null, selected = null;
+// sel = { kind: 'node'|'edge', id }  (id = node id, or edge index)
+let ir = null, sel = null;
 let lastSVG = '', lastSize = { w: 0, h: 0 };
 
 function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
@@ -21,13 +22,18 @@ function renderFromCode() {
     const el = stage.querySelector('svg');
     lastSize = { w: parseFloat(el.getAttribute('width')), h: parseFloat(el.getAttribute('height')) };
     attachHandlers();
-    if (selected) {
-      const g = stage.querySelector(`[data-id="${CSS.escape(selected)}"]`);
-      if (g) g.classList.add('sel'); else selected = null;
-    }
+    highlightSelection();
   } catch (e) {
     kind.textContent = ''; stage.innerHTML = '<div class="err">⚠ ' + (e.message || e) + '</div>';
   }
+}
+
+function highlightSelection() {
+  stage.querySelectorAll('.sel').forEach((g) => g.classList.remove('sel'));
+  if (!sel) return;
+  const q = sel.kind === 'node' ? `[data-id="${CSS.escape(sel.id)}"]` : `[data-edge="${sel.id}"]`;
+  const g = stage.querySelector(q);
+  if (g) g.classList.add('sel'); else sel = null;
 }
 
 // Mutate IR -> write code -> reparse -> render (keeps everything canonical).
@@ -35,20 +41,15 @@ function commit() {
   code.value = serialize(ir);
   ir = parseAny(code.value);
   renderFromCode();
-  if (selected) renderPanel(); else clearPanel();
+  if (sel) renderPanel(); else clearPanel();
 }
 
 // ---- selection + panel -------------------------------------------------
-function selectNode(id) {
-  selected = id;
-  stage.querySelectorAll('.hk-node.sel').forEach((g) => g.classList.remove('sel'));
-  const g = stage.querySelector(`[data-id="${CSS.escape(id)}"]`);
-  if (g) g.classList.add('sel');
-  renderPanel();
-}
+function selectNode(id) { sel = { kind: 'node', id }; highlightSelection(); renderPanel(); }
+function selectEdge(index) { sel = { kind: 'edge', id: index }; highlightSelection(); renderPanel(); }
 
 function clearPanel() {
-  panel.innerHTML = '<p class="empty">노드를 클릭해 편집하세요.</p>';
+  panel.innerHTML = '<p class="empty">노드·연결선을 클릭해 편집하세요.</p>';
 }
 
 function field(label, value, attrs = '') {
@@ -58,18 +59,26 @@ function area(label, value, rows = 4) {
   return `<label>${label}</label><textarea data-f rows="${rows}">${esc(value ?? '')}</textarea>`;
 }
 
+function selOpts(cur, opts) {
+  return opts.map(([v, txt]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${txt}</option>`).join('');
+}
+
 function renderPanel() {
-  const el = findElement(ir, selected);
+  if (!sel) { clearPanel(); return; }
+  if (sel.kind === 'edge') return renderEdgePanel();
+  renderNodePanel();
+}
+
+function renderNodePanel() {
+  const el = findElement(ir, sel.id);
   if (!el) { clearPanel(); return; }
   const t = ir.type;
-  let html = `<h2>${t} · ${esc(selected)}</h2>`;
-  const f = {}; // map field-key -> input later
+  let html = `<h2>${t} · ${esc(sel.id)}</h2>`;
 
   if (t === 'classDiagram') {
-    if (el.shape === undefined) { /* class/object */ }
     html += field('이름 (id)', el.id, 'data-k="id"');
     if (el.kind === 'object') {
-      html += area('값 (한 줄에 하나)', (el.sections[0] || []).join('\n'), 4) .replace('data-f', 'data-f data-k="values"');
+      html += area('값 (한 줄에 하나)', (el.sections[0] || []).join('\n'), 4).replace('data-f', 'data-f data-k="values"');
     } else {
       html += field('스테레오타입', el.stereotype || '', 'data-k="stereo"');
       html += area('속성', (el.sections[0] || []).join('\n'), 3).replace('data-f', 'data-f data-k="attrs"');
@@ -77,9 +86,8 @@ function renderPanel() {
     }
   } else if (t === 'flowchart') {
     html += field('라벨', el.label, 'data-k="label"');
-    html += `<label>도형</label><select data-f data-k="shape">${
-      ['rect', 'round', 'stadium', 'diamond', 'circle', 'cylinder', 'subroutine']
-        .map((s) => `<option ${el.shape === s ? 'selected' : ''}>${s}</option>`).join('')}</select>`;
+    html += `<label>도형</label><select data-f data-k="shape">${selOpts(el.shape,
+      ['rect', 'round', 'stadium', 'diamond', 'circle', 'cylinder', 'subroutine'].map((s) => [s, s]))}</select>`;
     html += field('이름 (id)', el.id, 'data-k="id"');
   } else if (t === 'stateDiagram') {
     if (el.shape === 'start' || el.shape === 'end') { html += '<p class="empty">시작/종료 마커</p>'; }
@@ -94,16 +102,69 @@ function renderPanel() {
   }
   html += `<button class="danger" data-del>이 노드 삭제</button>`;
   panel.innerHTML = html;
-
   panel.querySelectorAll('[data-f]').forEach((inp) => {
-    inp.addEventListener('change', () => applyField(el, inp.getAttribute('data-k'), inp.value));
+    inp.addEventListener('change', () => applyNodeField(el, inp.getAttribute('data-k'), inp.value));
   });
-  panel.querySelector('[data-del]').addEventListener('click', () => { deleteNode(ir, selected); selected = null; commit(); });
+  panel.querySelector('[data-del]').addEventListener('click', () => { deleteNode(ir, sel.id); sel = null; commit(); });
 }
 
-function applyField(el, key, value) {
+// class relation kind <-> (kind, style)
+const CLASS_RELS = [
+  ['inheritance', '상속  <|--'],
+  ['realization', '실현  <|..'],
+  ['dependency', '의존  <..'],
+  ['association', '연관  <--'],
+];
+function classRelKey(e) {
+  if (e.kind === 'inheritance') return 'inheritance';
+  if (e.kind === 'realization') return 'realization';
+  if (e.kind === 'dependency') return 'dependency';
+  return 'association';
+}
+
+function renderEdgePanel() {
+  const list = edgeList(ir);
+  const e = list && list[sel.id];
+  if (!e) { clearPanel(); return; }
+  const t = ir.type;
+  let html = `<h2>${t} · 연결</h2>`;
+
+  if (t === 'classDiagram') {
+    html += `<label>${esc(e.parent)} → ${esc(e.child)}</label>`;
+    html += `<label>관계 종류</label><select data-f data-k="classrel">${selOpts(classRelKey(e), CLASS_RELS)}</select>`;
+    html += field('라벨', e.label || '', 'data-k="elabel"');
+  } else if (t === 'flowchart') {
+    html += `<label>${esc(e.from)} → ${esc(e.to)}</label>`;
+    html += `<label>선 종류</label><select data-f data-k="estyle">${selOpts(e.style, [['solid', '실선 -->'], ['dashed', '점선 -.->'], ['thick', '굵게 ==>']])}</select>`;
+    html += `<label>화살표</label><select data-f data-k="earrow">${selOpts(e.arrow === false ? 'no' : 'yes', [['yes', '있음'], ['no', '없음']])}</select>`;
+    html += field('라벨', e.label || '', 'data-k="elabel"');
+  } else if (t === 'stateDiagram') {
+    html += `<label>${esc(e.from)} → ${esc(e.to)}</label>`;
+    html += field('라벨', e.label || '', 'data-k="elabel"');
+  } else if (t === 'erDiagram') {
+    html += `<label>${esc(e.a)} — ${esc(e.b)}</label>`;
+    const cards = [['||', '정확히 1  ||'], ['|o', '0 또는 1  |o'], ['}o', '0 또는 다  }o'], ['}|', '1 또는 다  }|']];
+    html += `<label>${esc(e.a)} 측</label><select data-f data-k="acard">${selOpts(e.aCard, cards)}</select>`;
+    html += `<label>${esc(e.b)} 측</label><select data-f data-k="bcard">${selOpts(e.bCard, cards.map(([v, x]) => [mirrorCard(v), x]))}</select>`;
+    html += `<label>선</label><select data-f data-k="estyle">${selOpts(e.style, [['solid', '실선 --'], ['dashed', '점선 ..']])}</select>`;
+    html += field('라벨', e.label || '', 'data-k="elabel"');
+  } else {
+    html += '<p class="empty">이 타입의 연결은 코드에서 편집하세요.</p>';
+  }
+  html += `<button class="danger" data-del>이 연결 삭제</button>`;
+  panel.innerHTML = html;
+  panel.querySelectorAll('[data-f]').forEach((inp) => {
+    inp.addEventListener('change', () => applyEdgeField(e, inp.getAttribute('data-k'), inp.value));
+  });
+  panel.querySelector('[data-del]').addEventListener('click', () => { deleteEdge(ir, sel.id); sel = null; commit(); });
+}
+
+// ER cardinality token mirrors for the right (b) side
+function mirrorCard(v) { return { '||': '||', '|o': 'o|', '}o': 'o{', '}|': '|{' }[v] || v; }
+
+function applyNodeField(el, key, value) {
   value = value.trim();
-  if (key === 'id') { if (renameNode(ir, selected, value)) selected = value; }
+  if (key === 'id') { if (renameNode(ir, sel.id, value)) sel.id = value; }
   else if (key === 'label') el.label = value;
   else if (key === 'stereo') el.stereotype = value || null;
   else if (key === 'shape') el.shape = value;
@@ -117,11 +178,29 @@ function applyField(el, key, value) {
   commit();
 }
 
+function applyEdgeField(e, key, value) {
+  if (key === 'classrel') {
+    if (value === 'inheritance') { e.kind = 'inheritance'; e.style = 'solid'; }
+    else if (value === 'realization') { e.kind = 'realization'; e.style = 'dashed'; }
+    else if (value === 'dependency') { e.kind = 'dependency'; e.style = 'dashed'; }
+    else { e.kind = 'association'; e.style = 'solid'; }
+  } else if (key === 'estyle') e.style = value;
+  else if (key === 'earrow') e.arrow = value === 'yes';
+  else if (key === 'acard') e.aCard = value;
+  else if (key === 'bcard') e.bCard = value;
+  else if (key === 'elabel') e.label = value.trim() || null;
+  commit();
+}
+
 // ---- node interaction (click / drag / connect) -------------------------
 function attachHandlers() {
   stage.querySelectorAll('.hk-node').forEach((g) => {
     const id = g.getAttribute('data-id');
     g.addEventListener('mousedown', (ev) => startDrag(ev, g, id));
+  });
+  stage.querySelectorAll('.hk-edge').forEach((g) => {
+    g.addEventListener('mousedown', (ev) => { ev.stopPropagation(); });
+    g.addEventListener('click', (ev) => { ev.stopPropagation(); selectEdge(Number(g.getAttribute('data-edge'))); });
   });
 }
 
@@ -217,7 +296,17 @@ function dropReorder(id, dxClient) {
 
 // ---- toolbar -----------------------------------------------------------
 $('add').addEventListener('click', () => { const id = addNode(ir); commit(); selectNode(id); });
-$('del').addEventListener('click', () => { if (selected) { deleteNode(ir, selected); selected = null; commit(); } });
+$('del').addEventListener('click', () => {
+  if (!sel) return;
+  if (sel.kind === 'node') deleteNode(ir, sel.id); else deleteEdge(ir, sel.id);
+  sel = null; commit();
+});
+document.addEventListener('keydown', (e) => {
+  if ((e.key === 'Delete' || e.key === 'Backspace') && sel && document.activeElement === document.body) {
+    if (sel.kind === 'node') deleteNode(ir, sel.id); else deleteEdge(ir, sel.id);
+    sel = null; commit();
+  }
+});
 
 // ---- code <-> ir two-way ----------------------------------------------
 let t;
@@ -228,7 +317,7 @@ code.addEventListener('input', () => {
 
 async function loadExample(name) {
   code.value = await (await fetch(new URL('../examples/' + name, import.meta.url))).text();
-  ir = parseAny(code.value); selected = null;
+  ir = parseAny(code.value); sel = null;
   renderFromCode(); clearPanel();
 }
 example.addEventListener('change', () => loadExample(example.value));

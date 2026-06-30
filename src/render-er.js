@@ -98,18 +98,20 @@ export function renderER(layout) {
   for (const r of routes) {
     const d = r.poly.map(([x, y], i) => `${i ? 'L' : 'M'}${x + 0.5} ${y + 0.5}`).join(' ');
     const dash = r.style === 'dashed' ? ` stroke-dasharray="${EDGE.dash}"` : '';
-    parts.push(`<path d="${d}" fill="none" stroke="${EDGE.color}" stroke-width="${EDGE.width}" stroke-linejoin="round"${dash}/>`);
+    const seg = [`<path class="hit" d="${d}" fill="none" stroke="transparent" stroke-width="12"/>`];
+    seg.push(`<path d="${d}" fill="none" stroke="${EDGE.color}" stroke-width="${EDGE.width}" stroke-linejoin="round"${dash}/>`);
     const rel = r.edge.rel;
     const aP = r.poly[0], aDir = unit(r.poly[0], r.poly[1]);
     const bP = r.poly[r.poly.length - 1], bDir = unit(r.poly[r.poly.length - 1], r.poly[r.poly.length - 2]);
-    parts.push(crowFoot(aP, aDir, rel.aCard, EDGE.color));
-    parts.push(crowFoot(bP, bDir, rel.bCard, EDGE.color));
+    seg.push(crowFoot(aP, aDir, rel.aCard, EDGE.color));
+    seg.push(crowFoot(bP, bDir, rel.bCard, EDGE.color));
     if (r.label) {
       const [lx, ly] = r.labelAt || r.poly[Math.floor(r.poly.length / 2)];
       const lw = textWidth(r.label, 11) + 10;
-      parts.push(`<rect x="${lx - lw / 2}" y="${ly - 9}" width="${lw}" height="18" rx="3" fill="#fff" opacity="0.9"/>`);
-      parts.push(`<text x="${lx}" y="${ly + 4}" text-anchor="middle" font-family="${FONT_STACK}" font-size="11" fill="#42505a">${esc(r.label)}</text>`);
+      seg.push(`<rect x="${lx - lw / 2}" y="${ly - 9}" width="${lw}" height="18" rx="3" fill="#fff" opacity="0.9"/>`);
+      seg.push(`<text x="${lx}" y="${ly + 4}" text-anchor="middle" font-family="${FONT_STACK}" font-size="11" fill="#42505a">${esc(r.label)}</text>`);
     }
+    parts.push(`<g class="hk-edge" data-edge="${r.edgeIndex}">${seg.join('\n')}</g>`);
   }
   for (const n of nodes) parts.push(`<g data-id="${n.id}" class="hk-node">${entitySVG(n)}</g>`);
 

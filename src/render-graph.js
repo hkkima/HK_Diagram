@@ -27,6 +27,7 @@ function edgeSVG(r) {
   const d = r.poly.map(([x, y], i) => `${i ? 'L' : 'M'}${x + 0.5} ${y + 0.5}`).join(' ');
   const dash = r.style === 'dashed' ? ` stroke-dasharray="${EDGE.dash}"` : '';
   const w = r.style === 'thick' ? 2.6 : EDGE.width;
+  out.push(`<path class="hit" d="${d}" fill="none" stroke="transparent" stroke-width="12"/>`);
   out.push(`<path d="${d}" fill="none" stroke="${EDGE.color}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round"${dash}/>`);
   if (r.arrow !== false) out.push(arrowHead(r.arrowAt, r.arrowDir, EDGE.color));
   if (r.label) {
@@ -35,7 +36,7 @@ function edgeSVG(r) {
     out.push(`<rect x="${lx - w2 / 2}" y="${ly - 9}" width="${w2}" height="18" rx="3" fill="#ffffff" opacity="0.9"/>`);
     out.push(`<text x="${lx}" y="${ly + 4}" text-anchor="middle" font-family="${FONT_STACK}" font-size="11" fill="#42505a">${esc(r.label)}</text>`);
   }
-  return out.join('\n');
+  return `<g class="hk-edge" data-edge="${r.edgeIndex}">${out.join('\n')}</g>`;
 }
 
 function nodeSVG(n) {

@@ -19,11 +19,25 @@ function renderEdges(routes) {
   const out = [];
   for (const r of routes) {
     const dash = r.style === 'dashed' ? ` stroke-dasharray="${EDGE.dash}"` : '';
-    out.push(
-      `<path d="${pathFromSegments(r.segments)}" fill="none" ` +
-      `stroke="${EDGE.color}" stroke-width="${EDGE.width}" ` +
-      `stroke-linecap="round" stroke-linejoin="miter"${dash}/>`
-    );
+    // shared trunk + bus (non-interactive)
+    if (r.shared.length) {
+      out.push(
+        `<path d="${pathFromSegments(r.shared)}" fill="none" ` +
+        `stroke="${EDGE.color}" stroke-width="${EDGE.width}" ` +
+        `stroke-linecap="round" stroke-linejoin="miter"${dash}/>`
+      );
+    }
+    // per-edge drop segments (clickable / selectable)
+    for (const d of r.drops) {
+      const dd = pathFromSegments([d.seg]);
+      out.push(
+        `<g class="hk-edge" data-edge="${d.edgeIndex}">` +
+        `<path class="hit" d="${dd}" fill="none" stroke="transparent" stroke-width="12"/>` +
+        `<path d="${dd}" fill="none" stroke="${EDGE.color}" stroke-width="${EDGE.width}" ` +
+        `stroke-linecap="round" stroke-linejoin="miter"${dash}/>` +
+        `</g>`
+      );
+    }
   }
   return out.join('\n');
 }

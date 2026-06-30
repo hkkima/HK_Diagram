@@ -47,7 +47,9 @@ export function routeGraph(layout) {
     bottom: Math.max(...real.map((n) => n.y + n.h)),
   };
 
+  let ei = -1;
   for (const e of layout.edges) {
+    ei++;
     const s = nodes[e.from], t = nodes[e.to];
     if (!s || !t) continue;
     const style = e.style || 'solid';
@@ -57,7 +59,7 @@ export function routeGraph(layout) {
     if (e.from === e.to) {
       const cy = s.y + s.h / 2, rx = s.x + s.w;
       const poly = [[rx, cy - 8], [rx + 26, cy - 8], [rx + 26, cy + 8], [rx, cy + 8]];
-      routes.push({ edge: e, poly, style, arrow, label: e.label, arrowAt: [rx, cy + 8], arrowDir: 'left' });
+      routes.push({ edge: e, edgeIndex: ei, poly, style, arrow, label: e.label, arrowAt: [rx, cy + 8], arrowDir: 'left' });
       continue;
     }
 
@@ -70,7 +72,7 @@ export function routeGraph(layout) {
       pts.push(entryPoint(t, dir));
       const poly = orthogonalize(pts, horiz);
       const mid = poly[Math.floor(poly.length / 2)];
-      routes.push({ edge: e, poly, style, arrow, label: e.label, arrowAt: poly[poly.length - 1], arrowDir: arrowDirFor(dir), labelAt: mid });
+      routes.push({ edge: e, edgeIndex: ei, poly, style, arrow, label: e.label, arrowAt: poly[poly.length - 1], arrowDir: arrowDirFor(dir), labelAt: mid });
     } else {
       // back edge: route around through the clearer side channel
       const scy = s.y + s.h / 2, tcy = t.y + t.h / 2;
@@ -92,7 +94,7 @@ export function routeGraph(layout) {
         poly = [[scx, sy], [scx, y], [tcx, y], [tcx, ty]];
         arrowAt = [tcx, ty]; arrowDir = useTop ? 'down' : 'up'; labelAt = [(scx + tcx) / 2, y];
       }
-      routes.push({ edge: e, poly, style, arrow, label: e.label, arrowAt, arrowDir, labelAt });
+      routes.push({ edge: e, edgeIndex: ei, poly, style, arrow, label: e.label, arrowAt, arrowDir, labelAt });
     }
   }
   return routes;
