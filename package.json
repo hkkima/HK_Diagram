@@ -1,0 +1,16 @@
+{
+  "name": "hk-diagram",
+  "version": "0.1.0",
+  "description": "Mermaid -> orthogonal (vertical/horizontal) SVG + PNG renderer, tuned for UML diagrams",
+  "type": "module",
+  "bin": {
+    "hkdiagram": "bin/cli.js"
+  },
+  "scripts": {
+    "build:example": "node bin/cli.js examples/character.mmd -o out/character",
+    "web": "node web/server.js"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2"
+  }
+}

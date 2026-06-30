@@ -1,0 +1,39 @@
+classDiagram
+    class Character {
+        <<Base Class>>
+        +name: String
+        +hp: int
+        +Attack(target)
+        +TakeDamage(amount)
+    }
+    class Player {
+        +mp: int
+        +exp: int
+        +CastSkill()
+    }
+    class Monster {
+        +isAggro: bool
+        +dropItem: String
+        +Patrol()
+    }
+    Character <|-- Player
+    Character <|-- Monster
+
+    class hero {
+        name = "용사"
+        hp = 100
+        mp = 50
+    }
+    class goblin {
+        name = "고블린"
+        hp = 50
+        isAggro = true
+    }
+    class orc {
+        name = "오크"
+        hp = 80
+        isAggro = true
+    }
+    Player <.. hero
+    Monster <.. goblin
+    Monster <.. orc

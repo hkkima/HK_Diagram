@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant U as 사용자
+    participant S as 서버
+    participant DB as DB
+    U->>S: 로그인 요청
+    S->>DB: 사용자 조회
+    DB-->>S: 사용자 정보
+    alt 인증 성공
+        S-->>U: 토큰 발급
+    else 인증 실패
+        S-->>U: 401 오류
+    end
+    Note right of U: 토큰 저장
+    loop 1분마다
+        U->>S: 하트비트
+    end
