@@ -2,12 +2,12 @@
 import { renderToSVG, detectType } from '../src/render.js';
 import { parseAny } from '../src/ir.js';
 import { serialize } from '../src/serialize.js';
-import { listElements, findElement, addNode, deleteNode, renameNode, addEdge, reorderByPeers } from '../src/edit-ops.js';
+import { findElement, addNode, deleteNode, renameNode, addEdge, reorderByPeers } from '../src/edit-ops.js';
 
 const $ = (id) => document.getElementById(id);
 const code = $('code'), stage = $('stage'), panel = $('panel'), kind = $('kind'), example = $('example');
 
-let ir = null, selected = null, mode = 'select', connectFrom = null;
+let ir = null, selected = null;
 let lastSVG = '', lastSize = { w: 0, h: 0 };
 
 function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
@@ -125,38 +125,71 @@ function attachHandlers() {
   });
 }
 
+function svgPoint(clientX, clientY) {
+  const svg = stage.querySelector('svg');
+  const pt = svg.createSVGPoint(); pt.x = clientX; pt.y = clientY;
+  const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+  return [p.x, p.y];
+}
+
+function nodeUnder(clientX, clientY, exceptId) {
+  const el = document.elementFromPoint(clientX, clientY);
+  const g = el && el.closest && el.closest('.hk-node');
+  if (!g || g.getAttribute('data-id') === exceptId) return null;
+  return g;
+}
+
+// dragged = source, drop target = the other node; direction is type-aware.
+function connectByDrag(sourceId, targetId) {
+  if (sourceId === targetId) return;
+  if (ir.type === 'classDiagram') addEdge(ir, targetId, sourceId); // 자식을 부모로 끌기 → 부모 <|-- 자식
+  else addEdge(ir, sourceId, targetId);                            // 끈 노드 → 놓은 노드
+  commit();
+}
+
 function startDrag(ev, g, id) {
   ev.preventDefault();
   const x0 = ev.clientX, y0 = ev.clientY;
-  let moved = false;
+  const svg = stage.querySelector('svg');
+  const sr = g.getBoundingClientRect();
+  const [sx, sy] = svgPoint(sr.left + sr.width / 2, sr.top + sr.height / 2);
+  let moved = false, cancelled = false, line = null, dropG = null;
+
+  const clearDrop = () => { if (dropG) { dropG.classList.remove('drop'); dropG = null; } };
   const onMove = (e) => {
+    if (cancelled) return;
     const dx = e.clientX - x0, dy = e.clientY - y0;
-    if (Math.abs(dx) + Math.abs(dy) > 4) moved = true;
-    if (moved) g.setAttribute('transform', `translate(${dx} ${dy})`);
+    if (!moved && Math.abs(dx) + Math.abs(dy) > 4) moved = true;
+    if (!moved) return;
+    const [cx, cy] = svgPoint(e.clientX, e.clientY);
+    if (!line) {
+      line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.id = 'hk-linkline';
+      line.setAttribute('x1', sx); line.setAttribute('y1', sy);
+      line.setAttribute('stroke', '#2f9e44'); line.setAttribute('stroke-width', '1.8');
+      line.setAttribute('stroke-dasharray', '5 4');
+      svg.appendChild(line);
+    }
+    line.setAttribute('x2', cx); line.setAttribute('y2', cy);
+    const tg = nodeUnder(e.clientX, e.clientY, id);
+    if (tg !== dropG) { clearDrop(); if (tg) { dropG = tg; tg.classList.add('drop'); } }
   };
   const onUp = (e) => {
     document.removeEventListener('mousemove', onMove);
     document.removeEventListener('mouseup', onUp);
-    g.removeAttribute('transform');
-    if (!moved) { handleClick(id); return; }
-    dropReorder(id, e.clientX - x0);
+    document.removeEventListener('keydown', onKey);
+    if (line) line.remove();
+    const tgId = (!cancelled && moved) ? nodeUnder(e.clientX, e.clientY, id)?.getAttribute('data-id') : null;
+    clearDrop();
+    if (cancelled) return;
+    if (!moved) { selectNode(id); return; }
+    if (tgId) connectByDrag(id, tgId);
+    else dropReorder(id, e.clientX - x0);
   };
+  const onKey = (e) => { if (e.key === 'Escape') { cancelled = true; if (line) line.remove(); clearDrop(); } };
   document.addEventListener('mousemove', onMove);
   document.addEventListener('mouseup', onUp);
-}
-
-function handleClick(id) {
-  if (mode === 'connect') {
-    if (!connectFrom) {
-      connectFrom = id;
-      stage.querySelector(`[data-id="${CSS.escape(id)}"]`)?.classList.add('src');
-    } else {
-      addEdge(ir, connectFrom, id);
-      connectFrom = null; setMode('select'); commit();
-    }
-    return;
-  }
-  selectNode(id);
+  document.addEventListener('keydown', onKey);
 }
 
 function dropReorder(id, dxClient) {
@@ -183,19 +216,8 @@ function dropReorder(id, dxClient) {
 }
 
 // ---- toolbar -----------------------------------------------------------
-function setMode(m) {
-  mode = m;
-  $('connect').classList.toggle('on', m === 'connect');
-  if (m !== 'connect' && connectFrom) {
-    stage.querySelector(`[data-id="${CSS.escape(connectFrom)}"]`)?.classList.remove('src');
-    connectFrom = null;
-  }
-}
-
 $('add').addEventListener('click', () => { const id = addNode(ir); commit(); selectNode(id); });
 $('del').addEventListener('click', () => { if (selected) { deleteNode(ir, selected); selected = null; commit(); } });
-$('connect').addEventListener('click', () => setMode(mode === 'connect' ? 'select' : 'connect'));
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setMode('select'); });
 
 // ---- code <-> ir two-way ----------------------------------------------
 let t;
@@ -206,7 +228,7 @@ code.addEventListener('input', () => {
 
 async function loadExample(name) {
   code.value = await (await fetch(new URL('../examples/' + name, import.meta.url))).text();
-  ir = parseAny(code.value); selected = null; setMode('select');
+  ir = parseAny(code.value); selected = null;
   renderFromCode(); clearPanel();
 }
 example.addEventListener('change', () => loadExample(example.value));

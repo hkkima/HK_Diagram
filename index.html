@@ -33,6 +33,10 @@
   .hk-node.sel > path:first-child, .hk-node.sel > rect:last-child {
     stroke:var(--sel) !important; stroke-width:2.4 !important; }
   .hk-node.src > rect, .hk-node.src > ellipse, .hk-node.src > polygon { stroke:#2f9e44 !important; stroke-width:2.4 !important; }
+  .hk-node.drop > rect, .hk-node.drop > ellipse, .hk-node.drop > polygon,
+  .hk-node.drop > path:first-child, .hk-node.drop > rect:last-child {
+    stroke:#2f9e44 !important; stroke-width:2.8 !important; }
+  #hk-linkline { pointer-events:none; }
   .panel { border-left:1px solid var(--bd); background:#fff; padding:12px; overflow:auto; font-size:13px; }
   .panel h2 { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:#57606a; margin:0 0 8px; }
   .panel label { display:block; font-size:12px; color:#57606a; margin:10px 0 3px; }
@@ -57,7 +61,6 @@
   </select>
   <span id="kind"></span>
   <button id="add">＋ 노드</button>
-  <button id="connect">🔗 연결</button>
   <button id="del">🗑 삭제</button>
   <span class="sp"></span>
   <a href="https://github.com/hkkima/HK_Diagram" target="_blank" rel="noopener" style="font-size:12px;color:#57606a;text-decoration:none">GitHub ↗</a>
@@ -68,7 +71,7 @@
   <textarea id="code" spellcheck="false"></textarea>
   <div class="stage" id="stage"></div>
   <div class="panel" id="panel"><p class="empty">노드를 클릭해 편집하세요.</p>
-    <div class="hint">· 노드 클릭 → 편집<br>· 노드 드래그 → 같은 줄에서 순서 변경(코드에 반영)<br>· 🔗 연결 → 두 노드 클릭<br>· 코드 직접 수정도 즉시 반영(양방향)</div>
+    <div class="hint">· 노드 클릭 → 편집<br>· 노드 → 다른 노드로 <b>드래그 = 연결</b><br>· 노드 → 빈 곳으로 드래그 = 같은 줄 순서 변경<br>· 코드 직접 수정도 즉시 반영(양방향)</div>
   </div>
 </main>
 <script type="module" src="web/editor.js"></script>
