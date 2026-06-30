@@ -20,7 +20,7 @@ const MIME = {
 createServer(async (req, res) => {
   try {
     let path = decodeURIComponent(req.url.split('?')[0]);
-    if (path === '/') path = '/web/index.html';
+    if (path === '/') path = '/index.html';
     const full = normalize(join(ROOT, path));
     if (!full.startsWith(ROOT)) { res.writeHead(403).end('forbidden'); return; }
     const data = await readFile(full);

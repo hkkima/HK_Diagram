@@ -1,8 +1,8 @@
 // HK_Diagram visual editor: two-way sync between mermaid text and the diagram.
-import { renderToSVG, detectType } from '/src/render.js';
-import { parseAny } from '/src/ir.js';
-import { serialize } from '/src/serialize.js';
-import { listElements, findElement, addNode, deleteNode, renameNode, addEdge, reorderByPeers } from '/src/edit-ops.js';
+import { renderToSVG, detectType } from '../src/render.js';
+import { parseAny } from '../src/ir.js';
+import { serialize } from '../src/serialize.js';
+import { listElements, findElement, addNode, deleteNode, renameNode, addEdge, reorderByPeers } from '../src/edit-ops.js';
 
 const $ = (id) => document.getElementById(id);
 const code = $('code'), stage = $('stage'), panel = $('panel'), kind = $('kind'), example = $('example');
@@ -205,7 +205,7 @@ code.addEventListener('input', () => {
 });
 
 async function loadExample(name) {
-  code.value = await (await fetch('/examples/' + name)).text();
+  code.value = await (await fetch(new URL('../examples/' + name, import.meta.url))).text();
   ir = parseAny(code.value); selected = null; setMode('select');
   renderFromCode(); clearPanel();
 }

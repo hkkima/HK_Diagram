@@ -1,5 +1,8 @@
 # HK_Diagram
 
+🔗 **온라인 에디터: https://hkkima.github.io/HK_Diagram/**
+
+
 Mermaid 코드를 받아 **직교(수직/수평) 라우팅** SVG + PNG로 렌더하는 도구.
 표준 mermaid와 달리 UML에서 흔한 "부모 트렁크 → 공유 수평 버스 → 자식 분기"
 도식화 규칙을 지킨다. 첨부 레퍼런스(UML 클래스/객체) 그래픽 스타일에 맞춤.
