@@ -4,6 +4,7 @@
 
 import { sizeGraphNode } from './shapes.js';
 import { CANVAS_PAD } from './theme.js';
+import { applyPositions } from './layout-util.js';
 
 const RANK_GAP = 56;
 const NODE_SEP = 40;
@@ -193,21 +194,16 @@ export function layoutGraph(ir) {
     n.y = Math.round(cy - n.h / 2);
   }
 
-  // shift into positive canvas, compute bounds (exclude dummies from bounds nudge but include for routing)
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  // shift into positive canvas
+  let minX = Infinity, minY = Infinity;
   for (const n of Object.values(nodes)) {
     if (n.isDummy) continue;
     minX = Math.min(minX, n.x); minY = Math.min(minY, n.y);
-    maxX = Math.max(maxX, n.x + n.w); maxY = Math.max(maxY, n.y + n.h);
   }
   const dx = CANVAS_PAD - minX, dy = CANVAS_PAD - minY;
   for (const n of Object.values(nodes)) { n.x += dx; n.y += dy; }
 
-  return {
-    nodes, dir,
-    edges: ir.edges,
-    edgeChains,
-    width: Math.ceil(maxX - minX + CANVAS_PAD * 2),
-    height: Math.ceil(maxY - minY + CANVAS_PAD * 2),
-  };
+  // free-placement overrides + final bounds
+  const dim = applyPositions(nodes, ir.positions);
+  return { nodes, dir, edges: ir.edges, edgeChains, width: dim.width, height: dim.height };
 }

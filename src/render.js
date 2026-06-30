@@ -24,20 +24,33 @@ export function detectType(text) {
   throw new Error('Unknown diagram type. First line: classDiagram / flowchart / graph / stateDiagram / erDiagram / sequenceDiagram.');
 }
 
+// `%% hkpos <id> <x> <y>` comments carry free-placement overrides.
+export function parsePositions(text) {
+  const pos = {};
+  const re = /^\s*%%\s*hkpos\s+(\S+)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/gm;
+  let m;
+  while ((m = re.exec(text))) pos[m[1]] = { x: +m[2], y: +m[3] };
+  return pos;
+}
+
 export function renderToSVG(text) {
+  const positions = parsePositions(text);
   switch (detectType(text)) {
     case 'classDiagram': {
-      const layout = layoutClass(parseClassDiagram(text));
+      const ir = parseClassDiagram(text); ir.positions = positions;
+      const layout = layoutClass(ir);
       return { svg: renderSVG(layout, routeOrtho(layout)), layout };
     }
     case 'flowchart':
     case 'stateDiagram': {
       const ir = text.trim().startsWith('stateDiagram') ? parseState(text) : parseFlowchart(text);
+      ir.positions = positions;
       const layout = layoutGraph(ir);
       return { svg: renderGraph(layout, routeGraph(layout)), layout };
     }
     case 'erDiagram': {
-      const layout = layoutER(parseER(text));
+      const ir = parseER(text); ir.positions = positions;
+      const layout = layoutER(ir);
       return { svg: renderER(layout), layout };
     }
     case 'sequenceDiagram': {

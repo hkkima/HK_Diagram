@@ -4,8 +4,8 @@
 // solid/dashed resolution.
 
 function makeNode(id) {
-  return { id, kind: 'class', name: id, type: null, stereotype: null,
-           _attrs: [], _methods: [], _values: [] };
+  // body: ordered list of { group:true, label } | { group:false, text }
+  return { id, kind: 'class', name: id, type: null, body: [] };
 }
 
 const RELATION =
@@ -51,13 +51,11 @@ export function parseClassDiagram(text) {
       continue;
     }
 
-    // inside a class block
+    // inside a class block: <<label>> = in-body group divider, else a member
     if (cur) {
       const m = line.match(/^<<(.+)>>$/);
-      if (m) { cur.stereotype = m[1].trim(); continue; }
-      if (/[=]/.test(line) && !/[()]/.test(line)) { cur._values.push(line); continue; }
-      if (/[()]/.test(line)) { cur._methods.push(line); continue; }
-      cur._attrs.push(line);
+      if (m) { cur.body.push({ group: true, label: m[1].trim() }); continue; }
+      cur.body.push({ group: false, text: line });
       continue;
     }
 
@@ -74,16 +72,9 @@ export function parseClassDiagram(text) {
     }
   }
 
-  // finalize node kinds + sections
+  // object if any member is a value assignment (name = value)
   for (const n of nodes.values()) {
-    if (n._values.length) {
-      n.kind = 'object';
-      n.sections = [n._values];
-    } else {
-      n.kind = 'class';
-      n.sections = [n._attrs, n._methods];
-    }
-    delete n._attrs; delete n._methods; delete n._values;
+    n.kind = n.body.some((e) => !e.group && /=/.test(e.text) && !/[()]/.test(e.text)) ? 'object' : 'class';
   }
 
   // objects inherit their type name from the class that points at them

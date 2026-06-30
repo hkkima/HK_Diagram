@@ -2,7 +2,7 @@
 import { renderToSVG, detectType } from '../src/render.js';
 import { parseAny } from '../src/ir.js';
 import { serialize } from '../src/serialize.js';
-import { findElement, addNode, deleteNode, renameNode, addEdge, reorderByPeers, edgeList, deleteEdge } from '../src/edit-ops.js';
+import { findElement, addNode, deleteNode, renameNode, addEdge, edgeList, deleteEdge } from '../src/edit-ops.js';
 
 const $ = (id) => document.getElementById(id);
 const code = $('code'), stage = $('stage'), panel = $('panel'), kind = $('kind'), example = $('example');
@@ -30,10 +30,11 @@ function renderFromCode() {
 
 function highlightSelection() {
   stage.querySelectorAll('.sel').forEach((g) => g.classList.remove('sel'));
+  stage.querySelectorAll('.hk-handle').forEach((h) => h.remove());
   if (!sel) return;
   const q = sel.kind === 'node' ? `[data-id="${CSS.escape(sel.id)}"]` : `[data-edge="${sel.id}"]`;
   const g = stage.querySelector(q);
-  if (g) g.classList.add('sel'); else sel = null;
+  if (g) { g.classList.add('sel'); if (sel.kind === 'node') addConnectHandle(); } else sel = null;
 }
 
 // Mutate IR -> write code -> reparse -> render (keeps everything canonical).
@@ -77,13 +78,8 @@ function renderNodePanel() {
 
   if (t === 'classDiagram') {
     html += field('이름 (id)', el.id, 'data-k="id"');
-    if (el.kind === 'object') {
-      html += area('값 (한 줄에 하나)', (el.sections[0] || []).join('\n'), 4).replace('data-f', 'data-f data-k="values"');
-    } else {
-      html += field('스테레오타입', el.stereotype || '', 'data-k="stereo"');
-      html += area('속성', (el.sections[0] || []).join('\n'), 3).replace('data-f', 'data-f data-k="attrs"');
-      html += area('메서드', (el.sections[1] || []).join('\n'), 3).replace('data-f', 'data-f data-k="methods"');
-    }
+    const bodyText = (el.body || []).map((e) => (e.group ? `<<${e.label}>>` : e.text)).join('\n');
+    html += area('본문 (그룹 구분선은 <<이름>>)', bodyText, 7).replace('data-f', 'data-f data-k="classbody"');
   } else if (t === 'flowchart') {
     html += field('라벨', el.label, 'data-k="label"');
     html += `<label>도형</label><select data-f data-k="shape">${selOpts(el.shape,
@@ -166,11 +162,14 @@ function applyNodeField(el, key, value) {
   value = value.trim();
   if (key === 'id') { if (renameNode(ir, sel.id, value)) sel.id = value; }
   else if (key === 'label') el.label = value;
-  else if (key === 'stereo') el.stereotype = value || null;
   else if (key === 'shape') el.shape = value;
-  else if (key === 'values') el.sections[0] = value.split('\n').map((s) => s.trim()).filter(Boolean);
-  else if (key === 'attrs') el.sections[0] = value.split('\n').map((s) => s.trim()).filter(Boolean);
-  else if (key === 'methods') el.sections[1] = value.split('\n').map((s) => s.trim()).filter(Boolean);
+  else if (key === 'classbody') {
+    el.body = value.split('\n').map((s) => s.trim()).filter(Boolean).map((ln) => {
+      const m = ln.match(/^<<(.+)>>$/);
+      return m ? { group: true, label: m[1].trim() } : { group: false, text: ln };
+    });
+    el.kind = el.body.some((e) => !e.group && /=/.test(e.text) && !/[()]/.test(e.text)) ? 'object' : 'class';
+  }
   else if (key === 'erattrs') el.attrs = value.split('\n').map((s) => s.trim()).filter(Boolean).map((ln) => {
     const p = ln.split(/\s+/); const type = p[0], name = p[1] || p[0];
     return { type: p.length > 1 ? type : 'string', name, keys: p.slice(2).filter((k) => /^(PK|FK|UK)$/.test(k)) };
@@ -192,11 +191,14 @@ function applyEdgeField(e, key, value) {
   commit();
 }
 
-// ---- node interaction (click / drag / connect) -------------------------
+// ---- node interaction (select / free move / connect-via-handle) --------
+const PAD_MIN = 28;
+const SVGNS = 'http://www.w3.org/2000/svg';
+
 function attachHandlers() {
   stage.querySelectorAll('.hk-node').forEach((g) => {
     const id = g.getAttribute('data-id');
-    g.addEventListener('mousedown', (ev) => startDrag(ev, g, id));
+    g.addEventListener('mousedown', (ev) => startMove(ev, g, id));
   });
   stage.querySelectorAll('.hk-edge').forEach((g) => {
     g.addEventListener('mousedown', (ev) => { ev.stopPropagation(); });
@@ -204,13 +206,14 @@ function attachHandlers() {
   });
 }
 
+function svgEl() { return stage.querySelector('svg'); }
+function svgScale() { const m = svgEl().getScreenCTM(); return [m.a || 1, m.d || 1]; }
 function svgPoint(clientX, clientY) {
-  const svg = stage.querySelector('svg');
+  const svg = svgEl();
   const pt = svg.createSVGPoint(); pt.x = clientX; pt.y = clientY;
   const p = pt.matrixTransform(svg.getScreenCTM().inverse());
   return [p.x, p.y];
 }
-
 function nodeUnder(clientX, clientY, exceptId) {
   const el = document.elementFromPoint(clientX, clientY);
   const g = el && el.closest && el.closest('.hk-node');
@@ -218,39 +221,59 @@ function nodeUnder(clientX, clientY, exceptId) {
   return g;
 }
 
-// dragged = source, drop target = the other node; direction is type-aware.
-function connectByDrag(sourceId, targetId) {
-  if (sourceId === targetId) return;
-  if (ir.type === 'classDiagram') addEdge(ir, targetId, sourceId); // 자식을 부모로 끌기 → 부모 <|-- 자식
-  else addEdge(ir, sourceId, targetId);                            // 끈 노드 → 놓은 노드
-  commit();
-}
-
-function startDrag(ev, g, id) {
+// free-placement: drag node body to reposition; persisted as %% hkpos
+function startMove(ev, g, id) {
   ev.preventDefault();
   const x0 = ev.clientX, y0 = ev.clientY;
-  const svg = stage.querySelector('svg');
-  const sr = g.getBoundingClientRect();
-  const [sx, sy] = svgPoint(sr.left + sr.width / 2, sr.top + sr.height / 2);
-  let moved = false, cancelled = false, line = null, dropG = null;
-
-  const clearDrop = () => { if (dropG) { dropG.classList.remove('drop'); dropG = null; } };
+  const bb = g.getBBox();           // current position in svg user units
+  const [sx, sy] = svgScale();
+  let moved = false, cancelled = false;
   const onMove = (e) => {
     if (cancelled) return;
     const dx = e.clientX - x0, dy = e.clientY - y0;
     if (!moved && Math.abs(dx) + Math.abs(dy) > 4) moved = true;
-    if (!moved) return;
+    if (moved) g.setAttribute('transform', `translate(${dx / sx} ${dy / sy})`);
+  };
+  const onUp = (e) => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    document.removeEventListener('keydown', onKey);
+    g.removeAttribute('transform');
+    if (cancelled) return;
+    if (!moved) { selectNode(id); return; }
+    const nx = Math.max(PAD_MIN, Math.round(bb.x + (e.clientX - x0) / sx));
+    const ny = Math.max(PAD_MIN, Math.round(bb.y + (e.clientY - y0) / sy));
+    ir.positions = ir.positions || {};
+    ir.positions[id] = { x: nx, y: ny };
+    sel = { kind: 'node', id };
+    commit();
+  };
+  const onKey = (e) => { if (e.key === 'Escape') { cancelled = true; g.removeAttribute('transform'); } };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+  document.addEventListener('keydown', onKey);
+}
+
+// connection handle (shown on the selected node); drag it onto another node
+function startConnect(ev, sourceId) {
+  ev.preventDefault(); ev.stopPropagation();
+  const svg = svgEl();
+  const [sx0, sy0] = svgPoint(ev.clientX, ev.clientY);
+  let line = null, dropG = null, cancelled = false;
+  const clearDrop = () => { if (dropG) { dropG.classList.remove('drop'); dropG = null; } };
+  const onMove = (e) => {
+    if (cancelled) return;
     const [cx, cy] = svgPoint(e.clientX, e.clientY);
     if (!line) {
-      line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line = document.createElementNS(SVGNS, 'line');
       line.id = 'hk-linkline';
-      line.setAttribute('x1', sx); line.setAttribute('y1', sy);
+      line.setAttribute('x1', sx0); line.setAttribute('y1', sy0);
       line.setAttribute('stroke', '#2f9e44'); line.setAttribute('stroke-width', '1.8');
       line.setAttribute('stroke-dasharray', '5 4');
       svg.appendChild(line);
     }
     line.setAttribute('x2', cx); line.setAttribute('y2', cy);
-    const tg = nodeUnder(e.clientX, e.clientY, id);
+    const tg = nodeUnder(e.clientX, e.clientY, sourceId);
     if (tg !== dropG) { clearDrop(); if (tg) { dropG = tg; tg.classList.add('drop'); } }
   };
   const onUp = (e) => {
@@ -258,12 +281,13 @@ function startDrag(ev, g, id) {
     document.removeEventListener('mouseup', onUp);
     document.removeEventListener('keydown', onKey);
     if (line) line.remove();
-    const tgId = (!cancelled && moved) ? nodeUnder(e.clientX, e.clientY, id)?.getAttribute('data-id') : null;
+    const tgId = !cancelled ? nodeUnder(e.clientX, e.clientY, sourceId)?.getAttribute('data-id') : null;
     clearDrop();
-    if (cancelled) return;
-    if (!moved) { selectNode(id); return; }
-    if (tgId) connectByDrag(id, tgId);
-    else dropReorder(id, e.clientX - x0);
+    if (tgId) {
+      if (ir.type === 'classDiagram') addEdge(ir, tgId, sourceId); // 자식을 부모로 끌기
+      else addEdge(ir, sourceId, tgId);
+      commit();
+    }
   };
   const onKey = (e) => { if (e.key === 'Escape') { cancelled = true; if (line) line.remove(); clearDrop(); } };
   document.addEventListener('mousemove', onMove);
@@ -271,27 +295,19 @@ function startDrag(ev, g, id) {
   document.addEventListener('keydown', onKey);
 }
 
-function dropReorder(id, dxClient) {
-  // peers = nodes whose vertical center is on the same row as the dragged node
-  const groups = [...stage.querySelectorAll('.hk-node')];
-  const rect = (g) => g.getBoundingClientRect();
-  const me = stage.querySelector(`[data-id="${CSS.escape(id)}"]`);
-  const mr = rect(me);
-  const myCy = mr.top + mr.height / 2;
-  const band = Math.max(24, mr.height * 0.6);
-  const peers = groups.filter((g) => {
-    const r = rect(g); return Math.abs((r.top + r.height / 2) - myCy) < band;
-  });
-  if (peers.length < 2) return;
-  const cx = (g) => {
-    const r = rect(g);
-    const c = r.left + r.width / 2;
-    return g === me ? c + dxClient : c;
-  };
-  peers.sort((a, b) => cx(a) - cx(b));
-  const ordered = peers.map((g) => g.getAttribute('data-id'));
-  reorderByPeers(ir, id, ordered);
-  commit();
+// place a small connect handle on the selected node
+function addConnectHandle() {
+  if (!sel || sel.kind !== 'node' || ir.type === 'sequenceDiagram') return;
+  const g = stage.querySelector(`[data-id="${CSS.escape(sel.id)}"]`);
+  if (!g) return;
+  const bb = g.getBBox();
+  const h = document.createElementNS(SVGNS, 'circle');
+  h.setAttribute('class', 'hk-handle');
+  h.setAttribute('cx', bb.x + bb.width);
+  h.setAttribute('cy', bb.y + bb.height / 2);
+  h.setAttribute('r', 5.5);
+  h.addEventListener('mousedown', (ev) => startConnect(ev, sel.id));
+  svgEl().appendChild(h);
 }
 
 // ---- toolbar -----------------------------------------------------------

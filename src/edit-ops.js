@@ -27,7 +27,7 @@ export function existingIds(ir) {
 export function addNode(ir) {
   const ids = existingIds(ir);
   const id = uniqueId(ids, ir.type === 'erDiagram' ? 'Entity' : 'Node');
-  if (ir.type === 'classDiagram') ir.nodes.push({ id, kind: 'class', name: id, type: null, stereotype: null, sections: [[], []] });
+  if (ir.type === 'classDiagram') ir.nodes.push({ id, kind: 'class', name: id, type: null, body: [] });
   else if (ir.type === 'flowchart') ir.nodes.push({ id, label: id, shape: 'rect' });
   else if (ir.type === 'stateDiagram') ir.nodes.push({ id, label: id, shape: 'round', kind: 'state' });
   else if (ir.type === 'erDiagram') ir.entities.push({ id, attrs: [{ type: 'int', name: 'id', keys: ['PK'] }] });

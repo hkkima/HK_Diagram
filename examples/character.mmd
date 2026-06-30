@@ -1,8 +1,9 @@
 classDiagram
     class Character {
-        <<Base Class>>
+        <<공통 정보>>
         +name: String
         +hp: int
+        <<행동>>
         +Attack(target)
         +TakeDamage(amount)
     }

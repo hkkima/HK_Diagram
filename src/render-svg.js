@@ -76,31 +76,38 @@ function renderNode(n) {
       `y2="${titleBaseline + 2.5}" stroke="${swatch.text}" stroke-width="1"/>`
     );
   }
-  // stereotype
-  if (n.stereotype) {
-    const sy = titleBaseline + FONT.stereotype * 1.15;
-    parts.push(
-      `<text x="${cx}" y="${sy}" text-anchor="middle" font-family="${FONT_STACK}" ` +
-      `font-size="${FONT.stereotype}" font-style="italic" font-weight="bold" ` +
-      `fill="${swatch.text}">${esc(`(${n.stereotype})`)}</text>`
-    );
-  }
 
-  // section dividers + member lines
-  const memberLH = FONT.member * 1.35;
-  for (const sec of n.sections) {
-    parts.push(
-      `<line x1="${x}" y1="${y + sec.y}" x2="${x + w}" y2="${y + sec.y}" ` +
-      `stroke="${swatch.border}" stroke-width="1"/>`
-    );
-    sec.lines.forEach((ln, i) => {
-      const ty = y + sec.y + PAD.rowPadY + (i + 1) * memberLH - FONT.member * 0.32;
+  // title separator
+  parts.push(
+    `<line x1="${x}" y1="${y + headerH}" x2="${x + w}" y2="${y + headerH}" ` +
+    `stroke="${swatch.border}" stroke-width="1"/>`
+  );
+
+  // body rows: members (left-aligned) and group dividers (centered italic band)
+  const rows = n.rows || [];
+  rows.forEach((r, i) => {
+    if (r.kind === 'group') {
+      if (i > 0) parts.push(
+        `<line x1="${x}" y1="${y + r.y}" x2="${x + w}" y2="${y + r.y}" stroke="${swatch.border}" stroke-width="1"/>`
+      );
+      parts.push(`<rect x="${x + 1}" y="${y + r.y}" width="${w - 2}" height="${r.h}" fill="#00000010"/>`);
+      const gy = y + r.y + r.h / 2 + FONT.member * 0.34;
+      parts.push(
+        `<text x="${cx}" y="${gy}" text-anchor="middle" font-family="${FONT_STACK}" ` +
+        `font-size="${FONT.member}" font-style="italic" font-weight="bold" fill="#566370">${esc(r.text)}</text>`
+      );
+    } else {
+      const ty = y + r.y + FONT.member * 0.95;
       parts.push(
         `<text x="${x + PAD.boxPadX}" y="${ty}" font-family="${FONT_STACK}" ` +
-        `font-size="${FONT.member}" fill="#1b1b1b">${esc(ln)}</text>`
+        `font-size="${FONT.member}" fill="#1b1b1b">${esc(r.text)}</text>`
       );
-    });
-  }
+    }
+  });
+  // attribute / method divider (no-group mode)
+  if (n.methodDivY != null) parts.push(
+    `<line x1="${x}" y1="${y + n.methodDivY}" x2="${x + w}" y2="${y + n.methodDivY}" stroke="${swatch.border}" stroke-width="1"/>`
+  );
 
   // re-stroke outer border so it sits above the header fill
   parts.push(

@@ -4,6 +4,7 @@
 
 import { sizeNode } from './model.js';
 import { PAD, CLASS_SWATCH, INSTANCE_PALETTE, CANVAS_PAD } from './theme.js';
+import { applyPositions } from './layout-util.js';
 
 export function layoutClass(ir) {
   const nodes = {};
@@ -97,19 +98,13 @@ export function layoutClass(ir) {
     n.y = Math.round(rowTop[depth.get(id)]);
   }
 
-  // Shift everything into positive canvas with padding, compute bounds.
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const n of Object.values(nodes)) {
-    minX = Math.min(minX, n.x); minY = Math.min(minY, n.y);
-    maxX = Math.max(maxX, n.x + n.w); maxY = Math.max(maxY, n.y + n.h);
-  }
+  // Shift everything into positive canvas with padding.
+  let minX = Infinity, minY = Infinity;
+  for (const n of Object.values(nodes)) { minX = Math.min(minX, n.x); minY = Math.min(minY, n.y); }
   const dx = CANVAS_PAD - minX, dy = CANVAS_PAD - minY;
   for (const n of Object.values(nodes)) { n.x += dx; n.y += dy; }
 
-  return {
-    nodes,
-    edges: ir.edges,
-    width: Math.ceil(maxX - minX + CANVAS_PAD * 2),
-    height: Math.ceil(maxY - minY + CANVAS_PAD * 2),
-  };
+  // free-placement overrides + final bounds
+  const dim = applyPositions(nodes, ir.positions);
+  return { nodes, edges: ir.edges, width: dim.width, height: dim.height };
 }

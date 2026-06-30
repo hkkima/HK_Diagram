@@ -4,12 +4,8 @@ function serializeClass(ir) {
   const L = ['classDiagram'];
   for (const n of ir.nodes) {
     L.push(`    class ${n.id} {`);
-    if (n.kind === 'object') {
-      for (const v of n.sections[0] || []) L.push(`        ${v}`);
-    } else {
-      if (n.stereotype) L.push(`        <<${n.stereotype}>>`);
-      for (const a of n.sections[0] || []) L.push(`        ${a}`);
-      for (const m of n.sections[1] || []) L.push(`        ${m}`);
+    for (const e of n.body || []) {
+      L.push(e.group ? `        <<${e.label}>>` : `        ${e.text}`);
     }
     L.push('    }');
   }
@@ -97,7 +93,7 @@ function serializeSequence(model) {
   return L.join('\n');
 }
 
-export function serialize(ir) {
+function serializeBody(ir) {
   switch (ir.type) {
     case 'classDiagram': return serializeClass(ir);
     case 'flowchart': return serializeFlowchart(ir);
@@ -106,4 +102,12 @@ export function serialize(ir) {
     case 'sequenceDiagram': return serializeSequence(ir);
     default: throw new Error('serialize: unknown type ' + ir.type);
   }
+}
+
+export function serialize(ir) {
+  let out = serializeBody(ir);
+  const pos = ir.positions || {};
+  const lines = Object.entries(pos).map(([id, p]) => `%% hkpos ${id} ${Math.round(p.x)} ${Math.round(p.y)}`);
+  if (lines.length) out += '\n' + lines.join('\n');
+  return out;
 }

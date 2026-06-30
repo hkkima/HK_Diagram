@@ -26,7 +26,7 @@ export function layoutER(ir) {
     return { id: ent.id, shape: 'rect', w, h, headH, rows, lines: [] };
   });
   const edges = ir.rels.map((r) => ({ from: r.a, to: r.b, style: r.style, arrow: false, label: r.label, rel: r }));
-  return layoutGraph({ direction: 'TB', nodes, edges });
+  return layoutGraph({ direction: 'TB', nodes, edges, positions: ir.positions });
 }
 
 function symbols(code) {
